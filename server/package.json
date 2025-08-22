@@ -4,5 +4,8 @@
     "cheerio": "^1.1.0",
     "cors": "^2.8.5",
     "express": "^5.1.0"
+  },
+  "scripts": {
+    "start": "nodemon server.js"
   }
 }
