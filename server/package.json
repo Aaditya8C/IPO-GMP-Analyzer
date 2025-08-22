@@ -3,7 +3,8 @@
     "axios": "^1.11.0",
     "cheerio": "^1.1.0",
     "cors": "^2.8.5",
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "serpapi": "^2.2.1"
   },
   "scripts": {
     "start": "nodemon server.js"

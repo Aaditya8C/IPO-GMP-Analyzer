@@ -29,40 +29,40 @@ const IPO = () => {
       setLoading(true);
       try {
         // Uncomment for real API
-        // const response = await axios.get("https://api.ipoalerts.in/ipos", {
-        //   headers: {
-        //     "x-api-key":
-        //       "913bcfa6f2e3427c598fe4e965451dfaa7995919eb7c93f70f87bc0b5aa4cf67",
-        //   },
-        //   params: { status: "open", page },
-        // });
+        const response = await axios.get("https://api.ipoalerts.in/ipos", {
+          headers: {
+            "x-api-key":
+              "913bcfa6f2e3427c598fe4e965451dfaa7995919eb7c93f70f87bc0b5aa4cf67",
+          },
+          params: { status: "open", page },
+        });
         // setIpos(response.data.ipos || []);
         // setMeta(response.data.meta || {});
 
         // Mock data for development
-        const response = {
-          data: {
-            meta: {
-              count: 6,
-              countOnPage: 1,
-              totalPages: 6,
-              page: 1,
-              limit: 1,
-            },
-            ipos: [
-              {
-                id: "2004384753",
-                name: "Patel Retail Limited",
-                about:
-                  "Patel Retail is a Maharashtra-based retail and food processing company...",
-                issueSize: "242cr",
-                minAmount: 14790,
-                minQty: 58,
-                priceRange: "237-255",
-              },
-            ],
-          },
-        };
+        // const response = {
+        //   data: {
+        //     meta: {
+        //       count: 6,
+        //       countOnPage: 1,
+        //       totalPages: 6,
+        //       page: 1,
+        //       limit: 1,
+        //     },
+        //     ipos: [
+        //       {
+        //         id: "2004384753",
+        //         name: "Mangal Electrical Industries Ltd",
+        //         about:
+        //           "Patel Retail is a Maharashtra-based retail and food processing company...",
+        //         issueSize: "242cr",
+        //         minAmount: 14790,
+        //         minQty: 58,
+        //         priceRange: "237-255",
+        //       },
+        //     ],
+        //   },
+        // };
         setIpos(response.data.ipos || []);
         setMeta(response.data.meta || {});
         setGmpData({}); // Reset GMP data on page change
@@ -83,9 +83,10 @@ const IPO = () => {
         ipos.map(async (ipo) => {
           try {
             // Remove " Limited" or " Ltd" from the end of the name
-            const pureName = ipo.name.replace(/\s+(Limited|Ltd)\s*$/i, "");
+            const pureName = slugifyIpoName(ipo.name);
             const res = await axios.get(
-              `http://localhost:8000/gmp?ipo_name=${encodeURIComponent(
+              `https://ipo-gmp-analyzer.onrender.com/gmp?ipo_name=${encodeURIComponent(
+                // `http://localhost:8000/gmp?ipo_name=${encodeURIComponent(
                 pureName
               )}`
             );
@@ -102,6 +103,18 @@ const IPO = () => {
       fetchGmpForIpos();
     }
   }, [ipos]);
+
+  function slugifyIpoName(name: String) {
+    // Remove common suffixes (case-insensitive)
+    let s = name.replace(
+      /\s+(Limited|Ltd|Industries|Corporation|Company|Enterprises|Private|Public)\s*$/i,
+      ""
+    );
+    s = s.trim().toLowerCase();
+    s = s.replace(/[^a-z0-9\s-]/g, "");
+    s = s.replace(/\s+/g, "-").replace(/^-+|-+$/g, "");
+    return s;
+  }
 
   const handleNext = () => {
     if (meta.count && page < meta.count) setPage(page + 1);

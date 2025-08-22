@@ -1,99 +1,65 @@
+// 2a5561f7bb31f0cd4f711e45a1b875a14a33d6ab8fde15d3c44dcb9bb822edb6
 const axios = require("axios");
 const cheerio = require("cheerio");
 
 const HEADERS = {
   "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0 Safari/537.36",
 };
 
-const UNIVEST_BASE = "https://univest.in/blogs";
+// 🔹 Step 1: Search Univest blog via SerpAPI
+async function searchUnivestUrl(ipoName) {
+  const query = `${ipoName} ipo gmp univest`;
+  const url = `https://serpapi.com/search.json?q=${encodeURIComponent(
+    query
+  )}&engine=google&location=India&hl=hi&gl=in&api_key=2a5561f7bb31f0cd4f711e45a1b875a14a33d6ab8fde15d3c44dcb9bb822edb6`;
 
-function slugifyIpoName(name) {
-  return name
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/^-+|-+$/g, "");
+  const res = await axios.get(url);
+  const results = res.data.organic_results || [];
+  const univestLink = results
+    .map((r) => r.link)
+    .find(
+      (link) =>
+        link.includes("univest.in/blogs") || link.includes("univest.in/ipo")
+    );
+  return univestLink || null;
 }
 
-function candidateUrls(ipoName) {
-  const slug = slugifyIpoName(ipoName);
-  return [
-    `${UNIVEST_BASE}/${slug}-ipo-gmp-3`,
-    `${UNIVEST_BASE}/${slug}-ipo-gmp-2`,
-    `${UNIVEST_BASE}/${slug}-ipo-gmp`,
-  ];
-}
-
-async function pickFirstWorkingUrl(urls) {
-  for (const url of urls) {
-    try {
-      const r = await axios.get(url, { headers: HEADERS, timeout: 15000 });
-      if (r.status === 200 && r.data.includes("GMP")) {
-        return url;
-      }
-    } catch (e) {
-      continue;
-    }
-  }
-  return null;
-}
-
+// 🔹 Utils
 function parseNumber(str) {
   if (!str) return null;
   return parseFloat(str.replace(/[₹,%]/g, "").replace(/,/g, ""));
 }
 
 function normalizeGmpTable(table) {
-  // table: array of arrays (rows), first row is header
   if (!table || table.length < 2) return [];
   const header = table[0].map((h) => h.trim().toLowerCase());
   const colMap = {};
   header.forEach((cl, idx) => {
-    if (cl.includes("gmp date") || cl === "date") colMap["Date"] = idx;
-    else if (cl.includes("ipo price") || cl.includes("issue price"))
-      colMap["IPO Price"] = idx;
-    else if (cl === "gmp" || cl.includes("grey market premium"))
-      colMap["GMP"] = idx;
+    if (cl.includes("date")) colMap["Date"] = idx;
+    else if (cl.includes("ipo price")) colMap["IPO Price"] = idx;
+    else if (cl.includes("gmp")) colMap["GMP"] = idx;
     else if (cl.includes("estimated listing price"))
       colMap["Estimated Listing Price"] = idx;
-    else if (
-      cl.includes("estimated listing gains") ||
-      cl.includes("listing gains") ||
-      cl.includes("gain")
-    )
+    else if (cl.includes("listing gains"))
       colMap["Estimated Listing Gains"] = idx;
   });
-
-  const keep = [
-    "Date",
-    "IPO Price",
-    "GMP",
-    "Estimated Listing Price",
-    "Estimated Listing Gains",
-  ].filter((c) => colMap[c] !== undefined);
 
   const rows = [];
   for (let i = 1; i < table.length; i++) {
     const row = {};
-    for (const col of keep) {
+    for (const col in colMap) {
       let val = table[i][colMap[col]];
       if (col === "Date") {
-        // Try to parse date as dd-mm-yyyy
         const d = val.replace(/\//g, "-");
         row[col] = d;
-      } else if (
-        ["IPO Price", "GMP", "Estimated Listing Price"].includes(col)
-      ) {
-        row[col] = parseNumber(val);
-      } else if (col === "Estimated Listing Gains") {
+      } else {
         row[col] = parseNumber(val);
       }
     }
     rows.push(row);
   }
-  // Sort by date ascending
+
   rows.sort(
     (a, b) =>
       new Date(a.Date.split("-").reverse().join("-")) -
@@ -102,42 +68,11 @@ function normalizeGmpTable(table) {
   return rows;
 }
 
-function fallbackParseFromText($) {
-  const hdr = $("h2,h3")
-    .filter((i, el) => $(el).text().includes("GMP Grey Market Premium"))
-    .first();
-  if (!hdr.length) return null;
-  const textAll = hdr.parent().text();
-  const rowPattern =
-    /(\d{2}-\d{2}-\d{4})\s*₹?\s*([\d,]+(?:\.\d+)?)\s*₹?\s*([\d,]+(?:\.\d+)?)\s*₹?\s*([\d,]+(?:\.\d+)?)\s*([\d.]+)\s*%/g;
-  const rows = [];
-  let m;
-  const seen = new Set();
-  while ((m = rowPattern.exec(textAll))) {
-    const [_, date_s, ipo_s, gmp_s, elp_s, gains_s] = m;
-    if (seen.has(date_s)) continue;
-    seen.add(date_s);
-    rows.push({
-      Date: date_s,
-      "IPO Price": parseNumber(ipo_s),
-      GMP: parseNumber(gmp_s),
-      "Estimated Listing Price": parseNumber(elp_s),
-      "Estimated Listing Gains": parseNumber(gains_s),
-    });
-  }
-  rows.sort(
-    (a, b) =>
-      new Date(a.Date.split("-").reverse().join("-")) -
-      new Date(b.Date.split("-").reverse().join("-"))
-  );
-  return rows.length ? rows : null;
-}
-
+// 🔹 Extract GMP history
 async function extractGmpHistory(url) {
-  const r = await axios.get(url, { headers: HEADERS, timeout: 20000 });
+  const r = await axios.get(url, { headers: HEADERS });
   const $ = cheerio.load(r.data);
 
-  // Try to find tables
   let tableRows = [];
   $("table").each((i, table) => {
     const rows = [];
@@ -160,15 +95,66 @@ async function extractGmpHistory(url) {
     if (ndf.length) return ndf;
   }
 
-  // Fallback to regex parsing
-  const fallback = fallbackParseFromText($);
-  if (fallback && fallback.length) return fallback;
-
   throw new Error("No valid GMP table found.");
 }
 
-module.exports = {
-  candidateUrls,
-  pickFirstWorkingUrl,
-  extractGmpHistory,
-};
+// 🔹 Final restructuring
+function parseDMY(dateStr) {
+  const [day, month, year] = dateStr.split("-").map(Number);
+  return new Date(year, month - 1, day); // JS Date: month is 0-based
+}
+
+function restructureData(gmpData) {
+  if (!gmpData || !gmpData.length) return null;
+
+  // Keep only last 5 entries
+  const lastFive = gmpData.slice(-5);
+
+  // Sort descending by parsed date (latest first)
+  const sorted = lastFive.sort(
+    (a, b) => parseDMY(b["Date"]) - parseDMY(a["Date"])
+  );
+
+  const latest = sorted[0];
+
+  return {
+    base_ipo_price: latest["IPO Price"] || null,
+    estimated_listing_price: latest["Estimated Listing Price"] || null,
+    estimated_listing_gains: latest["Estimated Listing Gains"] || null,
+    gmp_trend: sorted.map((row) => ({
+      date: row["Date"],
+      gmp: row["GMP"],
+    })),
+  };
+}
+
+// 🔹 Orchestrator
+// (async () => {
+//   const ipoName = "Patel Retail"; // Example IPO
+
+//   const url = await searchUnivestUrl(ipoName);
+//   if (!url) {
+//     console.error("No Univest URL found for:", ipoName);
+//     return;
+//   }
+
+//   console.log("✅ Found Univest URL:", url);
+
+//   const gmpData = await extractGmpHistory(url);
+//   const structured = restructureData(gmpData);
+
+//   console.log("📊 Final Output:", JSON.stringify(structured, null, 2));
+// })();
+
+// ...existing code...
+
+async function getGmpDataForIpo(ipoName) {
+  const url = await searchUnivestUrl(ipoName);
+  if (!url) {
+    throw new Error("No Univest URL found for: " + ipoName);
+  }
+  const gmpData = await extractGmpHistory(url);
+  return restructureData(gmpData);
+}
+
+module.exports = { getGmpDataForIpo };

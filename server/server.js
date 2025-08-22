@@ -1,10 +1,6 @@
 const express = require("express");
 const cors = require("cors");
-const {
-  candidateUrls,
-  pickFirstWorkingUrl,
-  extractGmpHistory,
-} = require("./scrapper");
+const { getGmpDataForIpo } = require("./scrapper");
 
 const app = express();
 app.use(cors());
@@ -14,33 +10,12 @@ app.get("/gmp", async (req, res) => {
   if (!ipoName) {
     return res.status(400).json({ detail: "IPO name required" });
   }
-  const urls = candidateUrls(ipoName);
-  const url = await pickFirstWorkingUrl(urls);
-  if (!url) {
-    return res.status(404).json({ detail: "GMP page not found" });
-  }
   try {
-    const df = await extractGmpHistory(url);
-    if (!df || !df.length) {
+    const data = await getGmpDataForIpo(ipoName);
+    if (!data || !data.gmp_trend || !data.gmp_trend.length) {
       return res.status(404).json({ detail: "No GMP data found" });
     }
-    const last5 = df.slice(-5).reverse();
-    const gmpArray = last5.map((row) => ({
-      date: row.Date,
-      gmp: row.GMP,
-    }));
-
-    const latest = last5[1] || last5[0] || {};
-    const baseIpoPrice = latest["IPO Price"] || null;
-    const estListingPrice = latest["Estimated Listing Price"] || null;
-    const estListingGains = latest["Estimated Listing Gains"] || null;
-
-    return res.json({
-      base_ipo_price: baseIpoPrice,
-      estimated_listing_price: estListingPrice,
-      estimated_listing_gains: estListingGains,
-      gmp_trend: gmpArray,
-    });
+    return res.json(data);
   } catch (e) {
     return res.status(500).json({ detail: e.message });
   }
