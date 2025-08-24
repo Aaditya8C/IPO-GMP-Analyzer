@@ -9,6 +9,22 @@ const IPO = () => {
   const [gmpData, setGmpData] = useState<{ [key: string]: any }>({});
   const [meta, setMeta] = useState<{ count?: number }>({});
   const [loading, setLoading] = useState(false);
+  const IPO_ALERT_API = process.env.NEXT_PUBLIC_IPO_ALERTS_URL;
+  const IPO_ALERTS_API_KEY = process.env.NEXT_PUBLIC_IPO_ALERTS_API_KEY;
+  const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL;
+  if (!IPO_ALERT_API) {
+    throw new Error(
+      "NEXT_PUBLIC_IPO_ALERTS_URL is not set in the environment."
+    );
+  }
+  if (!IPO_ALERTS_API_KEY) {
+    throw new Error(
+      "NEXT_PUBLIC_IPO_ALERTS_API_KEY is not set in the environment."
+    );
+  }
+  if (!SERVER_URL) {
+    throw new Error("NEXT_PUBLIC_SERVER_URL is not set in the environment.");
+  }
 
   useEffect(() => {
     const fetchIpos = async () => {
@@ -32,10 +48,9 @@ const IPO = () => {
         //     ],
         //   },
         // };
-        const response = await axios.get("https://api.ipoalerts.in/ipos", {
+        const response = await axios.get(IPO_ALERT_API, {
           headers: {
-            "x-api-key":
-              "913bcfa6f2e3427c598fe4e965451dfaa7995919eb7c93f70f87bc0b5aa4cf67",
+            "x-api-key": IPO_ALERTS_API_KEY,
           },
           params: { status: "open", page },
         });
@@ -59,12 +74,11 @@ const IPO = () => {
           try {
             const pureName = slugifyIpoName(ipo.name);
             const res = await axios.get(
-              `https://ipo-gmp-analyzer.onrender.com/gmp?ipo_name=${encodeURIComponent(
+              `${SERVER_URL}/gmp?ipo_name=${encodeURIComponent(
                 // `http://localhost:8000/gmp?ipo_name=${encodeURIComponent(
                 pureName
               )}`
             );
-            // console.log(pureName);
             // const res = {
             //   data: {
             //     base_ipo_price: 252,
